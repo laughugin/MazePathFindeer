@@ -46,44 +46,85 @@ class App:
             self.canvasInput.delete("all")
             self.canvasOutput.delete("all")
             self.color_matrix = [[None for _ in range(self.cols)] for _ in range(self.rows)]
+            self.distance_matrix = [[None for _ in range(self.cols)] for _ in range(self.rows)]  # Initialize the distance_matrix
 
             # Initialize the new grids
             self.init_rectangle_grid()
             self.init_output_rectangle_grid()
         except ValueError:
             messagebox.showerror("Error", "Please enter valid numbers for rows and columns")
-
     def create_output_frame(self):
         self.outputFrame = Frame(self.root, borderwidth=0, relief="groove")
         self.outputFrame.place(x=640, y=20, width=140, height=80)
         self.solveButton = Button(self.outputFrame, text="Solve maze", font=("Helvetica", 15, "bold"), bg="blue", fg="white", command=self.print_matrix)
         self.solveButton.place(x=0, y=0, width=140, height=80)
 
-    def dfs(self, x, y, goal, path=[]):
-        if not (0 <= x < self.rows and 0 <= y < self.cols) or self.symbol_matrix[x][y] in ['#', None]:
-            return False  # '#' represents a wall or an undefined cell
+    def a_star_algorithm(self, start, goal, grid):
+        
+        open_set = {start: 0}
+        closed_set = set()
 
-        if (x, y) in path:
-            return False  # already visited
+        # Store the path taken
+        came_from = {}
 
-        path.append((x, y))
+        
+        g_score = {start: 0}
 
-        if (x, y) == goal:
-            return True  # Goal is reached
+        
+        f_score = {start: self.manhattan_distance(start, goal)}
 
-        # Explore neighbors (up, down, left, right)
-        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
-            if self.dfs(x + dx, y + dy, goal, path):
-                return True
+        while open_set:
+            
+            current = min(open_set, key=lambda node: f_score[node])
+            if current == goal:
+                # Reconstruct path
+                path = []
+                while current in came_from:
+                    path.append(current)
+                    current = came_from[current]
+                return path[::-1]
 
-        path.pop()  # backtrack
-        return False
+            del open_set[current]
+            closed_set.add(current)
+
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1)]:  # Neighbors
+                neighbor = (current[0] + dx, current[1] + dy)
+                tentative_g_score = g_score[current] + 1
+
+                if 0 <= neighbor[0] < len(grid) and 0 <= neighbor[1] < len(grid[0]) and grid[neighbor[0]][neighbor[1]] != '#' and neighbor not in closed_set:
+                    if neighbor not in open_set:
+                        open_set[neighbor] = 0
+                    elif tentative_g_score >= g_score[neighbor]:
+                        continue
+
+                    # This path is the best until now
+                    came_from[neighbor] = current
+                    g_score[neighbor] = tentative_g_score
+                    f_score[neighbor] = tentative_g_score + self.manhattan_distance(neighbor, goal)
+        return None  
+    
+    def calculate_and_display_manhattan_distances(self, goal):
+        if not hasattr(self, 'distance_matrix'):
+            self.distance_matrix = [[None for _ in range(self.cols)] for _ in range(self.rows)]
+
+        for row in range(self.rows):
+            for col in range(self.cols):
+                # Check if the cell is not a wall and is within the bounds of the maze
+                if 0 <= row < self.rows and 0 <= col < self.cols and self.symbol_matrix[row][col] != '#':
+                    distance = self.manhattan_distance((row, col), goal)
+                    self.distance_matrix[row][col] = distance
+                    # Draw the distance on the canvas
+                    self.canvasOutput.create_text(col*self.size+self.size//2, row*self.size+self.size//2,
+                                                  text=str(distance), font=("Helvetica", 15), fill="white")
+                else:
+                    # If it's a wall or out of bounds, do not calculate or display the distance
+                    self.distance_matrix[row][col] = None
 
 
     def print_matrix(self):
         self.convert_color_matrix_to_symbols()
         for row in self.symbol_matrix:
-            print(' '.join(map(str, row)))    
+            print(' '.join(map(str, row)))
         self.copy_input_to_output()
 
         # Find start and goal positions
@@ -96,19 +137,24 @@ class App:
                     goal = (i, j)
 
         if start and goal:
-            path = []
-            if self.dfs(start[0], start[1], goal, path):
+            self.calculate_and_display_manhattan_distances(goal)
+            path = self.a_star_algorithm(start, goal, self.symbol_matrix)
+            if path:
                 print("Path found:", path)
                 self.display_path(path)
             else:
                 print("No path found")
         else:
-            print("Start or goal not defined")
-            print("Start or goal not defined")
+            messagebox.showerror("Error", "Start or goal not defined")
 
+    # Corrected manhattan_distance method
+    def manhattan_distance(self, start, goal):  # Added self parameter
+        return abs(start[0] - goal[0]) + abs(start[1] - goal[1])
     def display_path(self, path):
         for x, y in path:
             self.canvasOutput.create_rectangle(y*self.size, x*self.size, (y+1)*self.size, (x+1)*self.size, fill="green", outline="blue")
+
+
 
     def convert_color_matrix_to_symbols(self):
         # Define the mapping from color codes to symbols
